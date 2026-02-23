@@ -2,6 +2,8 @@
 
 A fast, browser-based multi-language coding playground with syntax highlighting and file management. Write, run, and test Python, JavaScript, and Clojure code directly in your browser—no server required.
 
+Attention Replit, you're nice, but sometimes people just want to run a simple code.
+
 ## Features
 
 ✨ **Multi-Language Support**
