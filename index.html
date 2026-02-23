@@ -36,6 +36,7 @@
       --font: 'JetBrains Mono', 'Fira Code', monospace;
       --topbar-height: 44px;
       --sidebar-width: 220px;
+      --font-size: 14px;
     }
 
     body {
@@ -86,6 +87,33 @@
       background: #555;
       cursor: not-allowed;
       color: #999;
+    }
+
+    /* ── Font Size Controls ───────────────────────────── */
+    #font-controls {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .font-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      cursor: pointer;
+      font-family: var(--font);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 3px 8px;
+      border-radius: 3px;
+      line-height: 1;
+      transition: color 0.1s, border-color 0.1s, background 0.1s;
+    }
+    .font-btn:hover { color: var(--text); border-color: var(--text-muted); background: var(--hover-bg); }
+    #font-size-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      min-width: 30px;
+      text-align: center;
     }
 
     /* ── Main Area ───────────────────────────────────── */
@@ -167,7 +195,7 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      font-size: 13px;
+      font-size: var(--font-size);
     }
     .tree-item .delete-btn {
       display: none;
@@ -214,7 +242,7 @@
     #editor-wrapper .CodeMirror {
       height: 100%;
       font-family: var(--font);
-      font-size: 14px;
+      font-size: var(--font-size);
       line-height: 1.6;
     }
     #no-file-msg {
@@ -229,12 +257,25 @@
     /* ── Right Pane (Console) ────────────────────────── */
     #right-pane {
       width: 380px;
+      min-width: 150px;
+      max-width: 70%;
       display: flex;
       flex-direction: column;
       background: var(--panel);
       border-left: 1px solid var(--border);
       flex-shrink: 0;
     }
+
+    /* ── Console Resize Handle ───────────────────────── */
+    #console-resizer {
+      width: 5px;
+      background: var(--border);
+      cursor: col-resize;
+      flex-shrink: 0;
+      transition: background 0.15s;
+    }
+    #console-resizer:hover,
+    #console-resizer.dragging { background: var(--accent); }
 
     #console-header {
       padding: 8px 14px;
@@ -252,7 +293,7 @@
       overflow-y: auto;
       padding: 10px 14px;
       font-family: var(--font);
-      font-size: 13px;
+      font-size: var(--font-size);
       line-height: 1.6;
       white-space: pre-wrap;
       word-break: break-word;
@@ -358,6 +399,11 @@
 <!-- ── Top Bar ─────────────────────────────────────────── -->
 <div id="topbar">
   <span id="topbar-title"><span aria-label="Python">🐍</span> Python Playground</span>
+  <div id="font-controls">
+    <button class="font-btn" id="font-decrease" title="Decrease font size">A-</button>
+    <span id="font-size-label">14px</span>
+    <button class="font-btn" id="font-increase" title="Increase font size">A+</button>
+  </div>
   <button id="run-btn" disabled>▶ Run</button>
 </div>
 
@@ -380,6 +426,9 @@
       <div id="no-file-msg">Open a file from the explorer</div>
     </div>
   </div>
+
+  <!-- Console Resize Handle -->
+  <div id="console-resizer" title="Drag to resize console"></div>
 
   <!-- Right Pane: Console -->
   <div id="right-pane">
@@ -801,13 +850,26 @@ sys.stderr = sys.__stderr__
 // ═══════════════════════════════════════════════════════════════
 //  CODEMIRROR INIT
 // ═══════════════════════════════════════════════════════════════
+// Overlay mode that treats // … as line comments on top of Python highlighting
+CodeMirror.defineMode('python-js-comments', config => {
+  const base = CodeMirror.getMode(config, 'python');
+  const overlay = {
+    token(stream) {
+      if (stream.match('//')) { stream.skipToEnd(); return 'comment'; }
+      while (stream.next() !== null && !stream.match('//', false)) {}
+      return null;
+    }
+  };
+  return CodeMirror.overlayMode(base, overlay);
+});
+
 function initEditor() {
   const wrapper = document.getElementById('editor-wrapper');
   const textarea = document.createElement('textarea');
   wrapper.appendChild(textarea);
 
   cmEditor = CodeMirror.fromTextArea(textarea, {
-    mode:          'python',
+    mode:          'python-js-comments',
     theme:         'dracula',
     lineNumbers:   true,
     indentUnit:    4,
@@ -828,6 +890,57 @@ function initEditor() {
       fs[openFile].content = cmEditor.getValue();
       saveFS();
     }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  FONT SIZE
+// ═══════════════════════════════════════════════════════════════
+const LS_FONT_SIZE = 'pyplay_fontsize';
+let currentFontSize = 14;
+
+function applyFontSize(size) {
+  currentFontSize = Math.max(10, Math.min(28, size));
+  document.documentElement.style.setProperty('--font-size', currentFontSize + 'px');
+  document.getElementById('font-size-label').textContent = currentFontSize + 'px';
+  if (cmEditor) cmEditor.refresh();
+  localStorage.setItem(LS_FONT_SIZE, currentFontSize);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CONSOLE RESIZE
+// ═══════════════════════════════════════════════════════════════
+const MIN_EDITOR_WIDTH = 300; // minimum px to keep for the editor area
+
+function initConsoleResizer() {
+  const resizer   = document.getElementById('console-resizer');
+  const rightPane = document.getElementById('right-pane');
+  const main      = document.getElementById('main');
+  let dragging = false;
+
+  resizer.addEventListener('mousedown', e => {
+    dragging = true;
+    resizer.classList.add('dragging');
+    document.body.style.cursor    = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const rect     = main.getBoundingClientRect();
+    const newWidth = rect.right - e.clientX;
+    const minWidth = 150;
+    const maxWidth = rect.width - MIN_EDITOR_WIDTH;
+    rightPane.style.width = Math.max(minWidth, Math.min(maxWidth, newWidth)) + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    resizer.classList.remove('dragging');
+    document.body.style.cursor    = '';
+    document.body.style.userSelect = '';
   });
 }
 
@@ -862,6 +975,15 @@ function boot() {
     if (e.key === 'Enter') createItem();
     if (e.key === 'Escape') hideModal();
   });
+
+  // Font size
+  const savedSize = parseInt(localStorage.getItem(LS_FONT_SIZE), 10);
+  applyFontSize(savedSize > 0 ? savedSize : 14);
+  document.getElementById('font-increase').addEventListener('click', () => applyFontSize(currentFontSize + 1));
+  document.getElementById('font-decrease').addEventListener('click', () => applyFontSize(currentFontSize - 1));
+
+  // Console resizer
+  initConsoleResizer();
 
   // Start Pyodide
   initPyodide();
