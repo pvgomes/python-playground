@@ -70,8 +70,11 @@ function ensureFolderOpen(lang) {
 }
 
 function persistCurrentLanguageState() {
+  console.log(`[PERSIST] Language=${currentLanguage}, openFile=${openFile}`);
   if (openFile && fs[openFile]) {
-    fs[openFile].content = getEditorValue(cmEditor);
+    const content = getEditorValue(cmEditor);
+    console.log(`[PERSIST] Saving to ${openFile}, content length=${content.length}`);
+    fs[openFile].content = content;
   }
   saveFSFor(fs, currentLanguage);
   saveOpenFileFor(openFile, currentLanguage);
@@ -91,18 +94,27 @@ function loadLanguageState(lang) {
 
 function switchLanguage(lang) {
   if (lang === currentLanguage) return;
+  console.log(`[SWITCH] From ${currentLanguage} to ${lang}`);
+  
+  // SAVE current file's content BEFORE switching filesystems
+  if (openFile && fs[openFile]) {
+    console.log(`[SWITCH] Saving current file ${openFile} before switch`);
+    fs[openFile].content = getEditorValue(cmEditor);
+  }
+  
   persistCurrentLanguageState();
   currentLanguage = lang;
   localStorage.setItem(LS_LANGUAGE, lang);
   setLanguage(lang);
   loadLanguageState(lang);
+  console.log(`[SWITCH] New fs files:`, Object.keys(fs));
+  console.log(`[SWITCH] Current openFile:`, openFile);
   runner = ensureRunner(currentLanguage);
 
-  if (openFile && fs[openFile]) {
-    openFileInEditor(openFile);
-  } else {
-    openFileInEditor(getDefaultFileName(lang));
-  }
+  const fileToOpen = (openFile && fs[openFile]) ? openFile : getDefaultFileName(lang);
+  console.log(`[SWITCH] Opening file:`, fileToOpen);
+  openFileInEditor(fileToOpen);
+  refreshEditor(cmEditor);
 }
 
 function ensureRunner(lang) {
@@ -137,26 +149,47 @@ function openFileInEditor(path, opts = {}) {
     return;
   }
 
-  if (!fs[path] || fs[path].type !== 'file') return;
+  console.log(`[OPENFILE] Requested path:`, path);
 
-  if (openFile && fs[openFile]) {
-    fs[openFile].content = getEditorValue(cmEditor);
+  // Defensive: if the requested file doesn't exist, find a valid file to open
+  let fileToOpen = path;
+  if (!fs[path] || fs[path].type !== 'file') {
+    console.log(`[OPENFILE] File ${path} not found in fs, looking for fallback`);
+    // Try default file for the current language
+    const defaultFile = getDefaultFileName(currentLanguage);
+    if (fs[defaultFile] && fs[defaultFile].type === 'file') {
+      console.log(`[OPENFILE] Using default file:`, defaultFile);
+      fileToOpen = defaultFile;
+    } else {
+      // Find the first file in the filesystem
+      fileToOpen = Object.keys(fs).find(key => fs[key] && fs[key].type === 'file');
+      if (!fileToOpen) {
+        console.log(`[OPENFILE] No files found in fs`);
+        // No files exist, nothing to open
+        return;
+      }
+      console.log(`[OPENFILE] Using first available file:`, fileToOpen);
+    }
   }
 
-  openFile = path;
+  console.log(`[OPENFILE] Final file to open:`, fileToOpen);
+  console.log(`[OPENFILE] File content length:`, fs[fileToOpen].content?.length || 0);
+
+  openFile = fileToOpen;
   saveOpenFileFor(openFile, currentLanguage);
 
-  const detected = detectLanguageFromPath(path);
+  const detected = detectLanguageFromPath(fileToOpen);
   setEditorMode(cmEditor, languageModeMap[detected] || languageModeMap[currentLanguage]);
 
   const noMsg = document.getElementById('no-file-msg');
   if (noMsg) noMsg.style.display = 'none';
 
-  setEditorValue(cmEditor, fs[path].content || '', true);
+  console.log(`[OPENFILE] Calling setEditorValue with content length:`, (fs[fileToOpen].content || '').length);
+  setEditorValue(cmEditor, fs[fileToOpen].content || '', true);
   setEditorVisible(cmEditor, true);
 
   const bc = document.getElementById('breadcrumb');
-  bc.innerHTML = path.split('/').map((seg, i, arr) =>
+  bc.innerHTML = fileToOpen.split('/').map((seg, i, arr) =>
     i === arr.length - 1 ? `<span>${seg}</span>` : seg
   ).join(' / ');
 

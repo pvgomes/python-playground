@@ -66,13 +66,16 @@ export function createEditor(wrapper) {
 }
 
 export function setEditorValue(editor, value, clearHistory = true) {
+  console.log(`[setEditorValue] kind=${editor.kind}, has cm=${!!editor.cm}, value length=${(value || '').length}`);
   if (editor.kind === 'codemirror') {
+    console.log(`[setEditorValue] Using CodeMirror.setValue()`);
     editor.cm.setValue(value || '');
     if (clearHistory) editor.cm.clearHistory();
     editor.cm.refresh();
     return;
   }
 
+  console.log(`[setEditorValue] Using textarea.value`);
   editor.textarea.value = value || '';
   if (clearHistory) editor.textarea.scrollTop = 0;
 }
@@ -86,8 +89,14 @@ export function setEditorVisible(editor, visible) {
 }
 
 export function getEditorValue(editor) {
-  if (editor.kind === 'codemirror') return editor.cm.getValue();
-  return editor.textarea.value;
+  if (editor.kind === 'codemirror') {
+    const val = editor.cm.getValue();
+    console.log(`[getEditorValue] From CodeMirror, length=${val.length}`);
+    return val;
+  }
+  const val = editor.textarea.value;
+  console.log(`[getEditorValue] From textarea, length=${val.length}`);
+  return val;
 }
 
 export function onEditorChange(editor, handler) {
