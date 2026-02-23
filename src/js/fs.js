@@ -2,6 +2,7 @@ import { getStorage } from './storage.js';
 
 export const LS_FS = 'pyplay_fs';
 export const LS_OPEN = 'pyplay_open';
+const MAX_FS_BYTES = 500000;
 
 export function defaultFS() {
   return {
@@ -12,15 +13,27 @@ export function defaultFS() {
 export function loadFS(storage = getStorage()) {
   const raw = storage.getItem(LS_FS);
   if (raw) {
+    if (raw.length > MAX_FS_BYTES) {
+      resetFS(storage);
+      return defaultFS();
+    }
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') throw new Error('Invalid fs');
+      return parsed;
     } catch (_) {
+      resetFS(storage);
       return defaultFS();
     }
   }
   const fs = defaultFS();
   saveFS(fs, storage);
   return fs;
+}
+
+export function resetFS(storage = getStorage()) {
+  storage.removeItem(LS_FS);
+  storage.removeItem(LS_OPEN);
 }
 
 export function saveFS(fs, storage = getStorage()) {

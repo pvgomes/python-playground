@@ -1,9 +1,20 @@
-import { loadFS, saveFS, loadOpenFile, saveOpenFile } from './fs.js';
+import { loadFS, saveFS, loadOpenFile, saveOpenFile, resetFS } from './fs.js';
 import { consoleClear, consoleLog, consoleError, consoleSystem } from './console.js';
-import { createEditor, getEditorValue, setEditorValue, setEditorVisible } from './editor.js';
+import {
+  createEditor,
+  getEditorValue,
+  setEditorValue,
+  setEditorVisible,
+  onEditorChange,
+  setEditorMode,
+  refreshEditor,
+  upgradeToCodeMirror
+} from './editor.js';
 import { buildTree } from './ui/fileTree.js';
 import { initModal, showModal } from './ui/modal.js';
 import { createPyodideRunner } from './runner/pyodideRunner.js';
+import { createJsRunner } from './runner/jsRunner.js';
+import { createClojureRunner } from './runner/clojureRunner.js';
 
 const LS_FONT_SIZE = 'pyplay_fontsize';
 const MIN_EDITOR_WIDTH = 300;
@@ -12,7 +23,61 @@ let fs = {};
 let openFile = null;
 let cmEditor = null;
 let runner = null;
+let currentLanguage = 'python';
 const folderOpen = {};
+const runners = {};
+
+const languageModeMap = {
+  python: 'python',
+  javascript: 'javascript',
+  clojure: 'clojure'
+};
+
+const languageExtMap = {
+  python: '.py',
+  javascript: '.js',
+  clojure: '.clj'
+};
+
+function detectLanguageFromPath(path) {
+  if (path.endsWith('.py')) return 'python';
+  if (path.endsWith('.js')) return 'javascript';
+  if (path.endsWith('.clj') || path.endsWith('.cljs')) return 'clojure';
+  return currentLanguage;
+}
+
+function setLanguage(lang) {
+  currentLanguage = lang;
+  const select = document.getElementById('language-select');
+  if (select && select.value !== lang) select.value = lang;
+  setEditorMode(cmEditor, languageModeMap[lang] || 'python');
+}
+
+function ensureRunner(lang) {
+  if (runners[lang]) return runners[lang];
+
+  if (lang === 'python') {
+    runners[lang] = createPyodideRunner({
+      onStdout: consoleLog,
+      onStderr: consoleError,
+      onSystem: consoleSystem
+    });
+  } else if (lang === 'javascript') {
+    runners[lang] = createJsRunner({
+      onStdout: consoleLog,
+      onStderr: consoleError,
+      onSystem: consoleSystem
+    });
+  } else if (lang === 'clojure') {
+    runners[lang] = createClojureRunner({
+      onStdout: consoleLog,
+      onStderr: consoleError,
+      onSystem: consoleSystem
+    });
+  }
+
+  return runners[lang];
+}
 
 function openFileInEditor(path, opts = {}) {
   if (opts.rebuildOnly) {
@@ -29,6 +94,8 @@ function openFileInEditor(path, opts = {}) {
   openFile = path;
   saveOpenFile(openFile);
 
+  setLanguage(detectLanguageFromPath(path));
+
   const noMsg = document.getElementById('no-file-msg');
   if (noMsg) noMsg.style.display = 'none';
 
@@ -44,14 +111,16 @@ function openFileInEditor(path, opts = {}) {
 }
 
 function rebuildTree() {
-  const container = document.getElementById('file-tree');
-  buildTree({
-    fs,
-    openFile,
-    folderOpen,
-    container,
-    onOpenFile: openFileInEditor,
-    onDeleteItem: deleteItem
+  requestAnimationFrame(() => {
+    const container = document.getElementById('file-tree');
+    buildTree({
+      fs,
+      openFile,
+      folderOpen,
+      container,
+      onOpenFile: openFileInEditor,
+      onDeleteItem: deleteItem
+    });
   });
 }
 
@@ -84,7 +153,7 @@ function deleteItem(path) {
 function createItem({ name, type, parentPath }) {
   let finalName = name;
   if (type === 'file' && !finalName.split('/').pop().includes('.')) {
-    finalName += '.py';
+    finalName += languageExtMap[currentLanguage] || '.py';
   }
 
   const path = parentPath ? parentPath + '/' + finalName : finalName;
@@ -108,6 +177,7 @@ function createItem({ name, type, parentPath }) {
 }
 
 async function runCode() {
+  runner = ensureRunner(currentLanguage);
   if (!runner) return;
 
   if (openFile && fs[openFile]) {
@@ -124,7 +194,6 @@ async function runCode() {
 
   try {
     if (!runner.isReady()) {
-      consoleSystem('Loading Python runtime...');
       await runner.load();
     }
     await runner.run(code);
@@ -140,9 +209,9 @@ function applyFontSize(size) {
   const clamped = Math.max(10, Math.min(28, size));
   document.documentElement.style.setProperty('--font-size', clamped + 'px');
   document.getElementById('font-size-label').textContent = clamped + 'px';
-  if (cmEditor && cmEditor.textarea) {
-    cmEditor.textarea.style.fontSize = 'var(--font-size)';
-  }
+  if (cmEditor && cmEditor.textarea) cmEditor.textarea.style.fontSize = 'var(--font-size)';
+  if (cmEditor && cmEditor.cm) cmEditor.cm.setOption('fontSize', clamped + 'px');
+  refreshEditor(cmEditor);
   localStorage.setItem(LS_FONT_SIZE, clamped);
   return clamped;
 }
@@ -179,58 +248,115 @@ function initConsoleResizer() {
   });
 }
 
+function updateBootStatus(msg) {
+  const banner = document.getElementById('boot-banner');
+  if (banner) banner.textContent = msg;
+}
+
 async function boot() {
   try {
+    const banner = document.getElementById('boot-banner');
+    if (banner) {
+      banner.textContent = 'Loading...';
+    }
+    
+    console.log('1. Boot starting');
+    
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('reset') === '1') {
+      localStorage.clear();
+    }
+    
+    console.log('2. Loading FS');
     fs = loadFS();
-    cmEditor = createEditor(document.getElementById('editor-wrapper'));
-    setEditorVisible(cmEditor, false);
-
-    cmEditor.textarea.addEventListener('input', () => {
-    if (openFile && fs[openFile]) {
-      fs[openFile].content = getEditorValue(cmEditor);
+    console.log('3. FS loaded:', Object.keys(fs).length);
+    
+    console.log('4. Creating editor');
+    const editorWrapper = document.getElementById('editor-wrapper');
+    cmEditor = createEditor(editorWrapper);
+    console.log('5. Editor created');
+    
+    onEditorChange(cmEditor, () => {
+      if (openFile && fs[openFile]) {
+        fs[openFile].content = getEditorValue(cmEditor);
+        saveFS(fs);
+      }
+    });
+    
+    if (!fs['main.py']) {
+      fs['main.py'] = { type: 'file', content: 'print("hello world")' };
       saveFS(fs);
     }
-  });
-
-  rebuildTree();
-
-  if (!fs['main.py']) {
-    fs['main.py'] = { type: 'file', content: 'print("hello world")' };
-    saveFS(fs);
-  }
-
-  const last = loadOpenFile();
-  if (last && fs[last] && fs[last].type === 'file') {
-    openFileInEditor(last);
-  } else if (fs['main.py']) {
-    openFileInEditor('main.py');
-  }
-
-  document.getElementById('run-btn').addEventListener('click', runCode);
-  document.getElementById('add-btn').addEventListener('click', () => showModal(null));
-  initModal({ onCreate: createItem });
-
-  const savedSize = parseInt(localStorage.getItem(LS_FONT_SIZE), 10);
-  let currentFontSize = applyFontSize(savedSize > 0 ? savedSize : 14);
-  document.getElementById('font-increase')
-    .addEventListener('click', () => { currentFontSize = applyFontSize(currentFontSize + 1); });
-  document.getElementById('font-decrease')
-    .addEventListener('click', () => { currentFontSize = applyFontSize(currentFontSize - 1); });
-
-  initConsoleResizer();
-
-  runner = createPyodideRunner({
-    onStdout: consoleLog,
-    onStderr: consoleError,
-    onSystem: consoleSystem
-  });
-
+    
+    console.log('6. Setting up runner');
+    runner = createPyodideRunner({
+      onStdout: consoleLog,
+      onStderr: consoleError,
+      onSystem: consoleSystem
+    });
+    console.log('7. Runner created');
+    
     document.getElementById('run-btn').disabled = false;
-    const banner = document.getElementById('boot-banner');
+    console.log('8. Run button enabled');
+    
     if (banner) banner.remove();
+    console.log('9. Banner removed - BOOT COMPLETE');
+    
+    // UI setup happens immediately after boot
+    setTimeout(() => {
+      console.log('10. Post-boot setup starting');
+      
+      document.getElementById('run-btn').addEventListener('click', runCode);
+      document.getElementById('language-select').addEventListener('change', e => {
+        setLanguage(e.target.value);
+      });
+      document.getElementById('add-btn').addEventListener('click', () => showModal(null));
+      initModal({ onCreate: createItem });
+      
+      const savedSize = parseInt(localStorage.getItem(LS_FONT_SIZE), 10);
+      let currentFontSize = applyFontSize(savedSize > 0 ? savedSize : 14);
+      document.getElementById('font-increase')
+        .addEventListener('click', () => { currentFontSize = applyFontSize(currentFontSize + 1); });
+      document.getElementById('font-decrease')
+        .addEventListener('click', () => { currentFontSize = applyFontSize(currentFontSize - 1); });
+      
+      initConsoleResizer();
+      setLanguage(currentLanguage);
+      
+      openFileInEditor('main.py');
+      console.log('11. Post-boot setup complete');
+    }, 10);
+    
+    // Load CodeMirror from local files (2 seconds after boot)
+    setTimeout(async () => {
+      try {
+        console.log('12. Starting CodeMirror upgrade...');
+        consoleSystem('Loading syntax highlighting...');
+
+        await upgradeToCodeMirror(cmEditor, editorWrapper);
+
+        console.log('13. CodeMirror created, setting mode...');
+        if (openFile) {
+          setEditorMode(cmEditor, languageModeMap[currentLanguage]);
+        }
+
+        console.log('14. CodeMirror upgrade complete');
+        consoleSystem('Syntax highlighting ready.');
+      } catch (err) {
+        console.error('CodeMirror upgrade failed:', err);
+        consoleSystem('Syntax highlighting unavailable (using plain text mode).');
+      }
+    }, 2000);
+    
   } catch (err) {
-    consoleError('Boot failed: ' + err.message);
+    console.error('BOOT ERROR:', err);
+    alert('Boot failed: ' + err.message);
   }
 }
 
-document.addEventListener('DOMContentLoaded', boot);
+// Module scripts are deferred, so DOMContentLoaded may have already fired
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
+}

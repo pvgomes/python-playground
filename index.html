@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 
-  <!-- CodeMirror removed for now; plain textarea fallback -->
+  <!-- CodeMirror is lazy-loaded in JS to avoid blocking render -->
 
   <link rel="stylesheet" href="src/css/styles.css" />
   <style>
@@ -69,11 +69,18 @@
 
 <!-- ── Top Bar ─────────────────────────────────────────── -->
 <div id="topbar">
-  <span id="topbar-title"><span aria-label="Python">🐍</span> Python Playground</span>
+  <span id="topbar-title"><span aria-label="coding">👨🏻‍💻👩🏼‍💻</span> Coding Playground</span>
   <div id="font-controls">
     <button class="font-btn" id="font-decrease" title="Decrease font size">A-</button>
     <span id="font-size-label">14px</span>
     <button class="font-btn" id="font-increase" title="Increase font size">A+</button>
+  </div>
+  <div id="language-controls">
+    <select id="language-select" title="Language">
+      <option value="python">Python</option>
+      <option value="javascript">JavaScript</option>
+      <option value="clojure">Clojure</option>
+    </select>
   </div>
   <button id="run-btn" disabled>▶ Run</button>
 </div>
