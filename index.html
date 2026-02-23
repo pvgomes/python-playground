@@ -727,6 +727,16 @@ async function initPyodide() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  PREPROCESS
+// ═══════════════════════════════════════════════════════════════
+function preprocessCode(code) {
+  // Convert C/JS-style line comments (//) to Python comments (#)
+  // Only when // appears at the start of a line (with optional whitespace),
+  // so that the floor-division operator (a // b) is not affected.
+  return code.replace(/^(\s*)\/\/(.*)$/gm, '$1#$2');
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  RUN
 // ═══════════════════════════════════════════════════════════════
 async function runCode() {
@@ -738,7 +748,7 @@ async function runCode() {
     saveFS();
   }
 
-  const code = cmEditor.getValue();
+  const code = preprocessCode(cmEditor.getValue());
   consoleClear();
 
   const btn = document.getElementById('run-btn');
