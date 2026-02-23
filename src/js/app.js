@@ -70,11 +70,8 @@ function ensureFolderOpen(lang) {
 }
 
 function persistCurrentLanguageState() {
-  console.log(`[PERSIST] Language=${currentLanguage}, openFile=${openFile}`);
   if (openFile && fs[openFile]) {
-    const content = getEditorValue(cmEditor);
-    console.log(`[PERSIST] Saving to ${openFile}, content length=${content.length}`);
-    fs[openFile].content = content;
+    fs[openFile].content = getEditorValue(cmEditor);
   }
   saveFSFor(fs, currentLanguage);
   saveOpenFileFor(openFile, currentLanguage);
@@ -94,11 +91,9 @@ function loadLanguageState(lang) {
 
 function switchLanguage(lang) {
   if (lang === currentLanguage) return;
-  console.log(`[SWITCH] From ${currentLanguage} to ${lang}`);
   
   // SAVE current file's content BEFORE switching filesystems
   if (openFile && fs[openFile]) {
-    console.log(`[SWITCH] Saving current file ${openFile} before switch`);
     fs[openFile].content = getEditorValue(cmEditor);
   }
   
@@ -107,12 +102,9 @@ function switchLanguage(lang) {
   localStorage.setItem(LS_LANGUAGE, lang);
   setLanguage(lang);
   loadLanguageState(lang);
-  console.log(`[SWITCH] New fs files:`, Object.keys(fs));
-  console.log(`[SWITCH] Current openFile:`, openFile);
   runner = ensureRunner(currentLanguage);
 
   const fileToOpen = (openFile && fs[openFile]) ? openFile : getDefaultFileName(lang);
-  console.log(`[SWITCH] Opening file:`, fileToOpen);
   openFileInEditor(fileToOpen);
   refreshEditor(cmEditor);
 }

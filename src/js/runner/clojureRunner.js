@@ -39,12 +39,32 @@ export function createClojureRunner({ onStdout, onStderr, onSystem }) {
     if (!api) throw new Error('Clojure runtime not available');
 
     try {
-      if (api.eval_string) {
+      // Capture console.log output during execution
+      const logs = [];
+      const originalLog = console.log;
+      console.log = (...args) => {
+        logs.push(args.map(arg => String(arg)).join(' '));
+      };
+
+      try {
         const result = api.eval_string(code);
-        if (result !== undefined) onStdout(String(result));
-        return;
+        
+        // Restore console.log before outputting
+        console.log = originalLog;
+        
+        // Output captured logs
+        if (logs.length > 0) {
+          logs.forEach(log => onStdout(log));
+        }
+        
+        // Also output the result if it's not undefined
+        if (result !== undefined && result !== null) {
+          onStdout(String(result));
+        }
+      } finally {
+        // Ensure console.log is always restored
+        console.log = originalLog;
       }
-      throw new Error('SCI eval API not found');
     } catch (err) {
       onStderr(String(err));
     }
