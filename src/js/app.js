@@ -1,4 +1,11 @@
-import { loadFS, saveFS, loadOpenFile, saveOpenFile, resetFS } from './fs.js';
+import {
+  loadFSFor,
+  saveFSFor,
+  loadOpenFileFor,
+  saveOpenFileFor,
+  defaultFSFor,
+  resetFS
+} from './fs.js';
 import { consoleClear, consoleLog, consoleError, consoleSystem } from './console.js';
 import {
   createEditor,
@@ -17,6 +24,7 @@ import { createJsRunner } from './runner/jsRunner.js';
 import { createClojureRunner } from './runner/clojureRunner.js';
 
 const LS_FONT_SIZE = 'pyplay_fontsize';
+const LS_LANGUAGE = 'pyplay_language';
 const MIN_EDITOR_WIDTH = 300;
 
 let fs = {};
@@ -24,7 +32,8 @@ let openFile = null;
 let cmEditor = null;
 let runner = null;
 let currentLanguage = 'python';
-const folderOpen = {};
+let folderOpen = {};
+const folderOpenByLang = {};
 const runners = {};
 
 const languageModeMap = {
@@ -47,10 +56,53 @@ function detectLanguageFromPath(path) {
 }
 
 function setLanguage(lang) {
-  currentLanguage = lang;
   const select = document.getElementById('language-select');
   if (select && select.value !== lang) select.value = lang;
   setEditorMode(cmEditor, languageModeMap[lang] || 'python');
+}
+
+function getDefaultFileName(lang) {
+  return 'main' + (languageExtMap[lang] || '.py');
+}
+
+function ensureFolderOpen(lang) {
+  folderOpen = folderOpenByLang[lang] || (folderOpenByLang[lang] = {});
+}
+
+function persistCurrentLanguageState() {
+  if (openFile && fs[openFile]) {
+    fs[openFile].content = getEditorValue(cmEditor);
+  }
+  saveFSFor(fs, currentLanguage);
+  saveOpenFileFor(openFile, currentLanguage);
+}
+
+function loadLanguageState(lang) {
+  ensureFolderOpen(lang);
+  fs = loadFSFor(lang);
+  openFile = loadOpenFileFor(lang);
+  const defaultFile = getDefaultFileName(lang);
+  if (!fs[defaultFile]) {
+    const defaults = defaultFSFor(lang);
+    fs[defaultFile] = defaults[defaultFile];
+    saveFSFor(fs, lang);
+  }
+}
+
+function switchLanguage(lang) {
+  if (lang === currentLanguage) return;
+  persistCurrentLanguageState();
+  currentLanguage = lang;
+  localStorage.setItem(LS_LANGUAGE, lang);
+  setLanguage(lang);
+  loadLanguageState(lang);
+  runner = ensureRunner(currentLanguage);
+
+  if (openFile && fs[openFile]) {
+    openFileInEditor(openFile);
+  } else {
+    openFileInEditor(getDefaultFileName(lang));
+  }
 }
 
 function ensureRunner(lang) {
@@ -92,9 +144,10 @@ function openFileInEditor(path, opts = {}) {
   }
 
   openFile = path;
-  saveOpenFile(openFile);
+  saveOpenFileFor(openFile, currentLanguage);
 
-  setLanguage(detectLanguageFromPath(path));
+  const detected = detectLanguageFromPath(path);
+  setEditorMode(cmEditor, languageModeMap[detected] || languageModeMap[currentLanguage]);
 
   const noMsg = document.getElementById('no-file-msg');
   if (noMsg) noMsg.style.display = 'none';
@@ -139,14 +192,14 @@ function deleteItem(path) {
 
   if (openFile && (openFile === path || openFile.startsWith(path + '/'))) {
     openFile = null;
-    saveOpenFile(openFile);
+    saveOpenFileFor(openFile, currentLanguage);
     setEditorValue(cmEditor, '', true);
     setEditorVisible(cmEditor, false);
     document.getElementById('no-file-msg').style.display = '';
     document.getElementById('breadcrumb').textContent = 'No file open';
   }
 
-  saveFS(fs);
+  saveFSFor(fs, currentLanguage);
   rebuildTree();
 }
 
@@ -165,13 +218,13 @@ function createItem({ name, type, parentPath }) {
 
   if (type === 'file') {
     fs[path] = { type: 'file', content: '' };
-    saveFS(fs);
+    saveFSFor(fs, currentLanguage);
     rebuildTree();
     openFileInEditor(path);
   } else {
     fs[path] = { type: 'folder', content: null };
     folderOpen[path] = true;
-    saveFS(fs);
+    saveFSFor(fs, currentLanguage);
     rebuildTree();
   }
 }
@@ -182,7 +235,7 @@ async function runCode() {
 
   if (openFile && fs[openFile]) {
     fs[openFile].content = getEditorValue(cmEditor);
-    saveFS(fs);
+    saveFSFor(fs, currentLanguage);
   }
 
   const code = getEditorValue(cmEditor);
@@ -267,8 +320,14 @@ async function boot() {
       localStorage.clear();
     }
     
+    const storedLang = localStorage.getItem(LS_LANGUAGE);
+    if (storedLang && languageModeMap[storedLang]) {
+      currentLanguage = storedLang;
+    }
+    ensureFolderOpen(currentLanguage);
+
     console.log('2. Loading FS');
-    fs = loadFS();
+    loadLanguageState(currentLanguage);
     console.log('3. FS loaded:', Object.keys(fs).length);
     
     console.log('4. Creating editor');
@@ -279,25 +338,15 @@ async function boot() {
     onEditorChange(cmEditor, () => {
       if (openFile && fs[openFile]) {
         fs[openFile].content = getEditorValue(cmEditor);
-        saveFS(fs);
+        saveFSFor(fs, currentLanguage);
       }
     });
     
-    if (!fs['main.py']) {
-      fs['main.py'] = { type: 'file', content: 'print("hello world")' };
-      saveFS(fs);
-    }
-    
     console.log('6. Setting up runner');
-    runner = createPyodideRunner({
-      onStdout: consoleLog,
-      onStderr: consoleError,
-      onSystem: consoleSystem
-    });
+    runner = ensureRunner(currentLanguage);
     console.log('7. Runner created');
     
     document.getElementById('run-btn').disabled = false;
-    console.log('8. Run button enabled');
     
     if (banner) banner.remove();
     console.log('9. Banner removed - BOOT COMPLETE');
@@ -308,7 +357,7 @@ async function boot() {
       
       document.getElementById('run-btn').addEventListener('click', runCode);
       document.getElementById('language-select').addEventListener('change', e => {
-        setLanguage(e.target.value);
+        switchLanguage(e.target.value);
       });
       document.getElementById('add-btn').addEventListener('click', () => showModal(null));
       initModal({ onCreate: createItem });
@@ -323,7 +372,11 @@ async function boot() {
       initConsoleResizer();
       setLanguage(currentLanguage);
       
-      openFileInEditor('main.py');
+      if (openFile && fs[openFile]) {
+        openFileInEditor(openFile);
+      } else {
+        openFileInEditor(getDefaultFileName(currentLanguage));
+      }
       console.log('11. Post-boot setup complete');
     }, 10);
     

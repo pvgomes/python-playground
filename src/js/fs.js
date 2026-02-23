@@ -2,51 +2,92 @@ import { getStorage } from './storage.js';
 
 export const LS_FS = 'pyplay_fs';
 export const LS_OPEN = 'pyplay_open';
+const LS_FS_PREFIX = 'pyplay_fs_';
+const LS_OPEN_PREFIX = 'pyplay_open_';
 const MAX_FS_BYTES = 500000;
 
 export function defaultFS() {
+  return defaultFSFor('python');
+}
+
+export function defaultFSFor(language) {
+  const ext = language === 'javascript' ? '.js' : language === 'clojure' ? '.clj' : '.py';
+  const fileName = 'main' + ext;
+  const content = language === 'javascript'
+    ? 'console.log("hello world")'
+    : language === 'clojure'
+      ? '(println "hello world")'
+      : 'print("hello world")';
   return {
-    'main.py': { type: 'file', content: 'print("hello world")' }
+    [fileName]: { type: 'file', content }
   };
 }
 
+function fsKey(language) {
+  return language ? LS_FS_PREFIX + language : LS_FS;
+}
+
+function openKey(language) {
+  return language ? LS_OPEN_PREFIX + language : LS_OPEN;
+}
+
 export function loadFS(storage = getStorage()) {
-  const raw = storage.getItem(LS_FS);
+  return loadFSFor(null, storage);
+}
+
+export function loadFSFor(language, storage = getStorage()) {
+  const raw = storage.getItem(fsKey(language));
   if (raw) {
     if (raw.length > MAX_FS_BYTES) {
-      resetFS(storage);
-      return defaultFS();
+      resetFSFor(language, storage);
+      return defaultFSFor(language || 'python');
     }
     try {
       const parsed = JSON.parse(raw);
       if (!parsed || typeof parsed !== 'object') throw new Error('Invalid fs');
       return parsed;
     } catch (_) {
-      resetFS(storage);
-      return defaultFS();
+      resetFSFor(language, storage);
+      return defaultFSFor(language || 'python');
     }
   }
-  const fs = defaultFS();
-  saveFS(fs, storage);
+  const fs = defaultFSFor(language || 'python');
+  saveFSFor(fs, language, storage);
   return fs;
 }
 
 export function resetFS(storage = getStorage()) {
-  storage.removeItem(LS_FS);
-  storage.removeItem(LS_OPEN);
+  resetFSFor(null, storage);
+}
+
+export function resetFSFor(language, storage = getStorage()) {
+  storage.removeItem(fsKey(language));
+  storage.removeItem(openKey(language));
 }
 
 export function saveFS(fs, storage = getStorage()) {
-  storage.setItem(LS_FS, JSON.stringify(fs));
+  saveFSFor(fs, null, storage);
+}
+
+export function saveFSFor(fs, language, storage = getStorage()) {
+  storage.setItem(fsKey(language), JSON.stringify(fs));
 }
 
 export function loadOpenFile(storage = getStorage()) {
-  return storage.getItem(LS_OPEN) || null;
+  return loadOpenFileFor(null, storage);
+}
+
+export function loadOpenFileFor(language, storage = getStorage()) {
+  return storage.getItem(openKey(language)) || null;
 }
 
 export function saveOpenFile(openFile, storage = getStorage()) {
-  if (openFile) storage.setItem(LS_OPEN, openFile);
-  else storage.removeItem(LS_OPEN);
+  saveOpenFileFor(openFile, null, storage);
+}
+
+export function saveOpenFileFor(openFile, language, storage = getStorage()) {
+  if (openFile) storage.setItem(openKey(language), openFile);
+  else storage.removeItem(openKey(language));
 }
 
 export function buildTreeData(fs) {
