@@ -71,10 +71,11 @@
 <div id="topbar">
   <span id="topbar-title"><span aria-label="coding">👨🏻‍💻👩🏼‍💻</span> Coding Playground</span>
   <div id="font-controls">
-    <button class="font-btn" id="font-decrease" title="Decrease font size">A-</button>
+    <button class="font-btn" id="font-decrease" title="Decrease font size">A−</button>
     <span id="font-size-label">14px</span>
     <button class="font-btn" id="font-increase" title="Increase font size">A+</button>
   </div>
+  <button id="run-btn" disabled>▶ Run</button>
   <div id="language-controls">
     <select id="language-select" title="Language">
       <option value="python">Python</option>
@@ -82,7 +83,6 @@
       <option value="clojure">Clojure</option>
     </select>
   </div>
-  <button id="run-btn" disabled>▶ Run</button>
 </div>
 
 <!-- ── Main ───────────────────────────────────────────── -->
@@ -112,6 +112,9 @@
   <div id="right-pane">
     <div id="console-header">Console</div>
     <div id="console-output"></div>
+    <div id="console-footer">
+      made by <a href="https://pvgomes.com/" target="_blank" rel="noopener noreferrer">pvgomes</a>
+    </div>
   </div>
 
 </div>

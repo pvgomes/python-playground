@@ -284,7 +284,7 @@ async function runCode() {
 }
 
 function applyFontSize(size) {
-  const clamped = Math.max(10, Math.min(28, size));
+  const clamped = Math.max(10, Math.min(40, size));
   document.documentElement.style.setProperty('--font-size', clamped + 'px');
   document.getElementById('font-size-label').textContent = clamped + 'px';
   if (cmEditor && cmEditor.textarea) cmEditor.textarea.style.fontSize = 'var(--font-size)';
