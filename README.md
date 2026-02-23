@@ -1,2 +1,2 @@
-# python-playground
+# coding-playground
 for students purpose
