@@ -33,7 +33,17 @@ function renderFileItem(container, name, path, depth, ctx) {
   const icon = document.createElement('span');
   icon.className = 'item-icon';
   icon.setAttribute('aria-hidden', 'true');
-  icon.textContent = '📄';
+  
+  // Set icon based on file extension
+  if (path.endsWith('.py')) {
+    icon.textContent = '🐍'; // Python
+  } else if (path.endsWith('.js')) {
+    icon.textContent = '📜'; // JavaScript
+  } else if (path.endsWith('.clj')) {
+    icon.textContent = 'λ'; // Clojure (lambda symbol)
+  } else {
+    icon.textContent = '📄'; // Default file
+  }
 
   const label = document.createElement('span');
   label.className = 'item-name';
