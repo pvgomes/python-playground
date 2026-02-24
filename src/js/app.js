@@ -387,6 +387,12 @@ async function boot() {
       document.getElementById('add-btn').addEventListener('click', () => showModal(null));
       initModal({ onCreate: createItem });
       
+      // Toggle Explorer
+      document.getElementById('toggle-explorer').addEventListener('click', () => {
+        const leftPane = document.getElementById('left-pane');
+        leftPane.classList.toggle('hidden');
+      });
+      
       const savedSize = parseInt(localStorage.getItem(LS_FONT_SIZE), 10);
       let currentFontSize = applyFontSize(savedSize > 0 ? savedSize : 14);
       document.getElementById('font-increase')

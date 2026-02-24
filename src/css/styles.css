@@ -43,21 +43,40 @@ body {
   position: relative;
 }
 
-#topbar-title {
+#toggle-explorer {
   position: absolute;
   left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 18px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  line-height: 1;
+  z-index: 20;
+}
+
+#toggle-explorer:hover {
+  background: var(--hover-bg);
+  color: var(--accent);
+}
+
+#topbar-title {
+  position: absolute;
+  left: 64px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: 0.3px;
 }
 
 #language-controls {
   position: absolute;
   right: 16px;
-}
-
-#topbar-title {
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--text);
-  letter-spacing: 0.3px;
 }
 
 #run-btn {
@@ -140,6 +159,13 @@ body {
   background: var(--sidebar);
   border-right: 1px solid var(--border);
   flex-shrink: 0;
+  transition: width 0.3s ease;
+  overflow: hidden;
+}
+
+#left-pane.hidden {
+  width: 0;
+  border-right: none;
 }
 
 #file-tree-header {
